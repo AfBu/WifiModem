@@ -21,6 +21,7 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <EEPROM.h>
+#include "FS.h"
 
 
 //how many clients should be able to telnet to this ESP8266
@@ -169,6 +170,75 @@ const int   bits[]   = {5, 6, 7, 8, 0};
 const char *parity[] = {"No parity", "Even parity", "Odd parity", NULL};
 const char *stop[]   = {"One stop bit", "Two stop bits", NULL};
 
+void handleStatus() 
+{
+  String s;
+  int i;
+
+  s = "{";
+
+  // status
+  s += "\"status\":{";
+  s += "\"baud\":" + String(SerialData.baud) + ",";
+  s += "\"bits\":" + String(SerialData.bits) + ",";
+  s += "\"parity\":" + String(SerialData.parity) + ",";
+  s += "\"stopbits\":" + String(SerialData.stopbits) + ",";
+  s += "\"silent\":" + String(SerialData.silent) + ",";
+  s += "\"handle_telnet\":" + String(SerialData.handleTelnetProtocol) + ",";
+  s += "\"terminal_type\":\"" + String(SerialData.telnetTerminalType) + "\"";
+  s += "},";
+
+  // bauds
+  s += "\"bauds\":[";
+  for(i=0; baud[i]; i++)
+    s += (i > 0 ? "," : "") + String(baud[i]);
+  s += "],";
+
+  // terminal types
+  s += "\"terminals\":[\"none\",\"ansi\",\"teletype-33\",\"unknown\",\"vt100\",\"xterm\"]";
+
+  s += "}";
+
+  webserver.send(200, "application/json", s);
+}
+
+void handleDirectory()
+{
+  String s;
+  int i = 0;
+
+  if (webserver.hasArg("set") && webserver.hasArg("val")) {
+    String fn = "/" + webserver.arg("set");
+    String val = webserver.arg("val");
+
+    File file = SPIFFS.open(fn, "w");
+    file.print(val);
+    file.close();
+  }
+
+  if (webserver.hasArg("remove")) {
+    String fn = "/" + webserver.arg("remove");
+    if (SPIFFS.exists(fn)) SPIFFS.remove(fn);
+  }
+
+  s = "{";
+
+  Dir dir = SPIFFS.openDir("/");
+  while (dir.next()) {
+    if (isAlpha(dir.fileName()[2])) continue;
+    File file = dir.openFile("r");
+    s += (i > 0 ? ",\"" : "\"") + String(file.name()).substring(1) + "\":\"";
+    while (file.available())
+      s += char(file.read());
+    file.close();
+    s += "\"";
+    i++;
+  }
+
+  s += "}";
+
+  webserver.send(200, "application/json", s);
+}
 
 void handleRoot() 
 {
@@ -339,9 +409,48 @@ void handleSet()
   handleRoot();
 }
 
+String getContentType(String filename) {
+  if (webserver.hasArg("download")) {
+    return "application/octet-stream";
+  } else if (filename.endsWith(".htm")) {
+    return "text/html";
+  } else if (filename.endsWith(".html")) {
+    return "text/html";
+  } else if (filename.endsWith(".css")) {
+    return "text/css";
+  } else if (filename.endsWith(".js")) {
+    return "application/javascript";
+  } else if (filename.endsWith(".png")) {
+    return "image/png";
+  } else if (filename.endsWith(".gif")) {
+    return "image/gif";
+  } else if (filename.endsWith(".jpg")) {
+    return "image/jpeg";
+  } else if (filename.endsWith(".ico")) {
+    return "image/x-icon";
+  } else if (filename.endsWith(".xml")) {
+    return "text/xml";
+  } else if (filename.endsWith(".pdf")) {
+    return "application/x-pdf";
+  } else if (filename.endsWith(".zip")) {
+    return "application/x-zip";
+  } else if (filename.endsWith(".gz")) {
+    return "application/x-gzip";
+  }
+  return "text/plain";
+}
 
 void handleNotFound() 
 {
+  String url = webserver.uri();
+  if (url == "/") url = "/index.htm";
+  if (SPIFFS.exists(url)) {
+    File file = SPIFFS.open(url, "r");
+    webserver.streamFile(file, getContentType(file.name()));
+    file.close();
+    return;
+  }
+  
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += webserver.uri();
@@ -461,7 +570,7 @@ void setup()
 
   // start serial interface with setup parameters (9600 baud 8N1)
   Serial.begin(9600);
-
+  
   // read serial info
   EEPROM.begin(1024);
   EEPROM.get(768, SerialData);
@@ -486,6 +595,10 @@ void setup()
       while(i<99 && SerialData.telnetTerminalType[i]>=32 && SerialData.telnetTerminalType[i]<127) i++;
       SerialData.telnetTerminalType[i]=0;
     }
+
+  // initialize FS
+  SPIFFS.begin();
+
   
   // read WiFi info
   WiFi.mode(WIFI_STA);
@@ -562,7 +675,9 @@ void setup()
   }
 
   MDNS.begin("esp8266");
-  webserver.on("/", handleRoot);
+  webserver.on("/status", handleStatus);
+  webserver.on("/setup", handleRoot);
+  webserver.on("/dir", handleDirectory);
   webserver.on("/set", handleSet);
   webserver.onNotFound(handleNotFound);
   webserver.begin();
@@ -885,6 +1000,39 @@ bool handleTelnetProtocol(uint8_t b, WiFiClient &client, struct TelnetStateStruc
   return false;
 }
 
+int customCmdLen = 0;
+char customCmd[81];
+
+bool handleDirectoryEntry(char* cmd, int ptr, int cmdLen)
+{
+  int tmp = cmdLen - ptr;
+  char c = 0;
+  char fn[tmp+2];
+
+  memcpy(fn + 1, cmd + ptr, tmp);
+  fn[0] = '/';
+  fn[tmp + 1] = 0x00;
+
+  if (SPIFFS.exists(fn)) {
+    // atdt command
+    strcpy(customCmd, "ATDT");
+    customCmdLen = 4;
+    
+    File file = SPIFFS.open(fn, "r");
+    if (file) {
+      while (file.available()) {
+        customCmd[customCmdLen++] = file.read();
+      }
+      file.close();
+      customCmd[customCmdLen] = 0x00;
+      return true;
+    }
+  }
+  return false;
+  
+  /*strcpy(customCmd, "ATDT192.168.1.123");
+  customCmdLen = 22;*/
+}
 
 void handleModemCommand()
 {
@@ -892,6 +1040,15 @@ void handleModemCommand()
   static int cmdLen = 0, prevCmdLen = 0;
   static char cmd[81];
   char c = 0;
+
+  if (customCmdLen > 0) {
+    for (int i = 0; i < customCmdLen; i++) cmd[i] = customCmd[i];
+    cmdLen = customCmdLen;
+    cmd[cmdLen+1] = 0x00;
+    customCmdLen = 0;
+    c = modemReg[REG_CR];
+    prevCharTime = millis();
+  }
 
   if( Serial.available() )
     {
@@ -988,6 +1145,16 @@ void handleModemCommand()
                           addr = IPAddress(n);
                           if( cmdLen-ptr==16 ) port = atoi(cmd+ptr+12);
                         }
+                      else if (cmdLen-ptr < 12)
+                      {
+                        if (handleDirectoryEntry(cmd, ptr, cmdLen)) {
+                          return;
+                        }
+                        else
+                        {
+                          status = E_ERROR; 
+                        }
+                      }
                       else
                         status = E_ERROR;
 
@@ -1204,13 +1371,77 @@ void handleModemCommand()
           // delay 1 second after a "CONNECT" message
           if( connecting ) delay(1000);
         }
+      else if (cmdLen>=3 && cmd[0]=='D' && cmd[1]=='I' && cmd[2]=='R')
+        {
+          int eqs = cmdLen;
+          int status = E_ERROR;
+          for (int i = 3; i < cmdLen; i++) {
+            if (isAlpha(cmd[i])) {
+              eqs = 0;
+              break;
+            }
+            if (cmd[i] == '=') {
+              eqs = i;
+              break;
+            }
+          }
+          if (eqs > 3) {
+            char fn[13];
+            fn[0] = '/';
+            for (int i = 3; i < eqs; i++)
+              fn[i-2] = cmd[i];
+            fn[eqs-2] = 0x00;
+            if (eqs == cmdLen - 1)
+            { // DELETE
+              if (SPIFFS.exists(fn)) {
+                SPIFFS.remove(fn);
+                status = E_OK;
+              }
+            } else if (eqs < cmdLen)
+            { // SAVE
+              File file = SPIFFS.open(fn, "w");
+              for (int i = eqs + 1; i < cmdLen; i++)
+                file.write(cmd[i]);
+              file.close();
+              status = E_OK;
+            } else
+            { // SHOW
+              if (SPIFFS.exists(fn)) {
+                Serial.println("");
+                File file = SPIFFS.open(fn, "r");
+                while (file.available()) {
+                  Serial.print(char(file.read()));
+                }
+                file.close();
+                Serial.println("");
+                status = E_OK;
+              }
+            }
+          } else if (eqs == 3) {
+            status = E_OK;
+            Dir dir = SPIFFS.openDir("/");
+            Serial.println("");
+            while (dir.next()) {
+              if (isAlpha(dir.fileName()[2])) continue;
+              File file = dir.openFile("r");
+              Serial.print(String(file.name()).substring(1));
+              Serial.print("=");
+              while (file.available())
+                Serial.print(char(file.read()));
+              Serial.println();
+              file.close();
+            }
+          }
+
+          if (status != E_OK)
+            printModemResult(status);
+        }
       else if( cmdLen>0 )
         printModemResult(E_ERROR);
               
       cmdLen = 0;
     }
 }
-
 
 void relayModemData()
 {

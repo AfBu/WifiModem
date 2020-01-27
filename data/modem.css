@@ -1,0 +1,98 @@
+* {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: #222;
+    color: #eee;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+}
+
+button {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    background-color: #fc6f03;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    border-radius: 0;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+button:hover {
+    color: #000;
+    background-color: #ff9500;
+}
+
+button.green {
+    background-color: #41b000;
+}
+button.green:hover {
+    background-color: #5eff00;
+}
+
+#content {
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#setup {
+    width: 30%;
+    float: left;
+}
+#setup label {
+    display: inline-block;
+    margin-top: 20px;
+}
+#setup input[type=checkbox] {
+    margin-top: 20px;
+    float: right;
+}
+#setup select {
+    display: block;
+    width: 100%;
+    border: none;
+    background-color: #000;
+    color: #eee;
+}
+
+#directory {
+    margin-left: 35%;
+}
+
+table {
+    table-layout: fixed;
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 16px;
+}
+table thead tr th {
+    text-align: left;
+}
+table tbody tr {
+    background-color: #111;
+}
+table tbody tr:nth-child(even) {
+    background-color: #000;
+}
+table tbody tr td, table thead tr th {
+    padding-top: 2px;
+    padding-bottom: 2px;
+    padding-left: 2px;
+    padding-right: 2px;
+}
+table tbody tr td[align=right] {
+    text-align: right;
+}
+table tbody tr td button {
+    width: 45px;
+}
+table thead tr th[align=right] {
+    text-align: right;
+}
+table thead tr th button {
+    width: 45px;
+}

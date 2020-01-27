@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>WifiModem Configuration Utility</title>
+        <meta charset="utf-8">
+        <link rel="shortcut icon" type="image/png" href="/favicon.png" />
+        <link rel="stylesheet" href="modem.css">
+        <script src="jquery.js"></script>
+        <script src="modem.js"></script>
+    </head>
+    <body>
+        <div id="content">
+            <div id="logo">
+                <h1>WiFiModem</h1>
+            </div>
+            <div id="setup">
+                <label>Baud rate:</label>
+                <select id="bauds"></select>
+
+                <label>Data bits:</label>
+                <select id="databits"></select>
+
+                <label>Parity:</label>
+                <select id="parity"></select>
+
+                <label>Stop bits:</label>
+                <select id="stopbits"></select>
+
+                <input type="checkbox" id="silent">
+                <label for="silent">Print WiFi info to serial:</label>
+
+                <label for="telnet">Handle telnet protocol:</label>
+                <input type="checkbox" id="telnet">
+
+                <label>Terminal type:</label>
+                <select id="terminal"></select>
+            </div>
+            <div id="directory">
+                <table>
+                    <thead>
+                        <tr>
+                            <th width="30%">Line number</th>
+                            <th>Target address</th>
+                            <th width="50" align="right"><button id="add-record" class="green">NEW</button></th>
+                        </tr>
+                    </thead>
+                    <tbody id="directory-records">
+                        
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </body>
+</html>
